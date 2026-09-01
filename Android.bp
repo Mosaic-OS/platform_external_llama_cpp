@@ -1,0 +1,127 @@
+package {
+    default_applicable_licenses: ["external_llama_cpp_license"],
+}
+
+license {
+    name: "external_llama_cpp_license",
+    visibility: [":__subpackages__"],
+    license_kinds: ["SPDX-license-identifier-MIT"],
+    license_text: ["LICENSE"],
+}
+
+cc_defaults {
+    name: "llama_cpp_defaults",
+    sdk_version: "31",
+    stl: "c++_static",
+    rtti: true,
+    compile_multilib: "64",
+
+    cflags: [
+        "-O3",
+        "-DNDEBUG",
+        "-D_XOPEN_SOURCE=600",
+        "-D_GNU_SOURCE",
+        "-DGGML_USE_CPU",
+        "-DGGML_USE_LLAMAFILE",
+        "-DGGML_SCHED_MAX_COPIES=1",
+        "-DGGML_VERSION=\"0.22.0\"",
+        "-DGGML_COMMIT=\"36b1015\"",
+        "-DLLAMA_VERSION=\"0.3.0\"",
+        "-DLLAMA_COMMIT=\"36b1015\"",
+        "-fvisibility=hidden",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-unused-parameter",
+        "-Wno-unused-but-set-variable",
+        "-Wno-missing-field-initializers",
+        "-Wno-sign-compare",
+        "-Wno-implicit-fallthrough",
+        "-Wno-format",
+        "-Wno-format-nonliteral",
+        "-Wno-macro-redefined",
+        "-Wno-deprecated-declarations",
+        "-Wno-c99-designator",
+        "-Wno-unreachable-code-loop-increment",
+        "-Wno-pessimizing-move",
+        "-Wno-unqualified-std-cast-call",
+    ],
+
+    cppflags: [
+        "-std=c++17",
+        "-fexceptions",
+    ],
+
+    conlyflags: [
+        "-std=c11",
+    ],
+
+    local_include_dirs: [
+        "ggml/include",
+        "ggml/src",
+        "ggml/src/ggml-cpu",
+        "include",
+        "src",
+    ],
+
+    arch: {
+        arm64: {
+            cflags: [
+                "-march=armv8.2-a+dotprod+fp16",
+            ],
+        },
+    },
+
+    // We only ship arm64 devices
+    enabled: false,
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+    },
+}
+
+// A separate module prevents same-stem C and C++ sources from claiming one Soong object.
+cc_library_static {
+    name: "libggml_c",
+    defaults: ["llama_cpp_defaults"],
+
+    srcs: [
+        "ggml/src/*.c",
+        "ggml/src/ggml-cpu/*.c",
+        "ggml/src/ggml-cpu/arch/arm/*.c",
+    ],
+}
+
+cc_library_static {
+    name: "libllama_static",
+    defaults: ["llama_cpp_defaults"],
+
+    srcs: [
+        "ggml/src/*.cpp",
+        "ggml/src/ggml-cpu/*.cpp",
+        "ggml/src/ggml-cpu/arch/arm/*.cpp",
+        "ggml/src/ggml-cpu/llamafile/*.cpp",
+        "src/*.cpp",
+        "src/models/*.cpp",
+    ],
+
+    exclude_srcs: [
+        // These optional paths are not used by this static ARM64 inference build.
+        "ggml/src/ggml-cpu/repack.cpp",
+        "ggml/src/ggml-cpu/arch/arm/repack.cpp",
+        "ggml/src/ggml-cpu/arch/arm/cpu-feats.cpp",
+        "ggml/src/ggml-cpu/amx/*.cpp",
+        "ggml/src/ggml-cpu/hbm.cpp",
+        "src/llama-cparams.cpp",
+        "src/llama-quant.cpp",
+    ],
+
+    whole_static_libs: ["libggml_c"],
+
+    export_include_dirs: [
+        "ggml/include",
+        "include",
+    ],
+}
