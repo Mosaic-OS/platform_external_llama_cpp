@@ -9,6 +9,22 @@ license {
     license_text: ["LICENSE"],
 }
 
+genrule {
+    name: "llama_ggml_version_header",
+    srcs: ["ggml/src/ggml-version.h.in"],
+    out: ["ggml-version.h"],
+    cmd: "sed -e 's/@GGML_VERSION@/0.25.3/g' " +
+        "-e 's/@GGML_BUILD_COMMIT@/8e16421/g' $(in) > $(out)",
+}
+
+genrule {
+    name: "llama_version_header",
+    srcs: ["src/llama-version.h.in"],
+    out: ["llama-version.h"],
+    cmd: "sed -e 's/@LLAMA_VERSION@/0.5.0-dev/g' " +
+        "-e 's/@LLAMA_BUILD_COMMIT@/8e16421/g' $(in) > $(out)",
+}
+
 cc_defaults {
     name: "llama_cpp_defaults",
     sdk_version: "31",
@@ -22,12 +38,9 @@ cc_defaults {
         "-D_XOPEN_SOURCE=600",
         "-D_GNU_SOURCE",
         "-DGGML_USE_CPU",
+        "-DGGML_USE_CPU_REPACK",
         "-DGGML_USE_LLAMAFILE",
         "-DGGML_SCHED_MAX_COPIES=1",
-        "-DGGML_VERSION=\"0.22.0\"",
-        "-DGGML_COMMIT=\"36b1015\"",
-        "-DLLAMA_VERSION=\"0.3.0\"",
-        "-DLLAMA_COMMIT=\"36b1015\"",
         "-fvisibility=hidden",
         "-ffunction-sections",
         "-fdata-sections",
@@ -57,6 +70,8 @@ cc_defaults {
         "-std=c11",
     ],
 
+    generated_headers: ["llama_ggml_version_header", "llama_version_header"],
+
     local_include_dirs: [
         "ggml/include",
         "ggml/src",
@@ -64,14 +79,6 @@ cc_defaults {
         "include",
         "src",
     ],
-
-    arch: {
-        arm64: {
-            cflags: [
-                "-march=armv8.2-a+dotprod+fp16",
-            ],
-        },
-    },
 
     // We only ship arm64 devices
     enabled: false,
@@ -82,10 +89,34 @@ cc_defaults {
     },
 }
 
+cc_defaults {
+    name: "llama_cpp_arm64_defaults",
+    defaults: ["llama_cpp_defaults"],
+    arch: {
+        arm64: {
+            cflags: [
+                "-march=armv8.2-a+dotprod+fp16",
+            ],
+        },
+    },
+}
+
+cc_defaults {
+    name: "llama_cpp_i8mm_defaults",
+    defaults: ["llama_cpp_defaults"],
+    arch: {
+        arm64: {
+            cflags: [
+                "-march=armv8.2-a+dotprod+fp16+i8mm",
+            ],
+        },
+    },
+}
+
 // A separate module prevents same-stem C and C++ sources from claiming one Soong object.
 cc_library_static {
     name: "libggml_c",
-    defaults: ["llama_cpp_defaults"],
+    defaults: ["llama_cpp_arm64_defaults"],
 
     srcs: [
         "ggml/src/*.c",
@@ -96,29 +127,64 @@ cc_library_static {
 
 cc_library_static {
     name: "libllama_static",
-    defaults: ["llama_cpp_defaults"],
+    defaults: ["llama_cpp_arm64_defaults"],
 
     srcs: [
         "ggml/src/*.cpp",
         "ggml/src/ggml-cpu/*.cpp",
         "ggml/src/ggml-cpu/arch/arm/*.cpp",
+        "ggml/src/ggml-cpu/amx/*.cpp",
         "ggml/src/ggml-cpu/llamafile/*.cpp",
+        "ggml/src/ggml-cpu/tiled/*.cpp",
         "src/*.cpp",
         "src/models/*.cpp",
     ],
 
     exclude_srcs: [
-        // These optional paths are not used by this static ARM64 inference build.
-        "ggml/src/ggml-cpu/repack.cpp",
-        "ggml/src/ggml-cpu/arch/arm/repack.cpp",
+        // Feature scoring is only used by dynamically loaded CPU variants.
         "ggml/src/ggml-cpu/arch/arm/cpu-feats.cpp",
-        "ggml/src/ggml-cpu/amx/*.cpp",
-        "ggml/src/ggml-cpu/hbm.cpp",
-        "src/llama-cparams.cpp",
-        "src/llama-quant.cpp",
     ],
 
     whole_static_libs: ["libggml_c"],
+
+    export_include_dirs: [
+        "ggml/include",
+        "include",
+    ],
+}
+
+cc_library_static {
+    name: "libggml_c_i8mm",
+    defaults: ["llama_cpp_i8mm_defaults"],
+
+    srcs: [
+        "ggml/src/*.c",
+        "ggml/src/ggml-cpu/*.c",
+        "ggml/src/ggml-cpu/arch/arm/*.c",
+    ],
+}
+
+cc_library_static {
+    name: "libllama_static_i8mm",
+    defaults: ["llama_cpp_i8mm_defaults"],
+
+    srcs: [
+        "ggml/src/*.cpp",
+        "ggml/src/ggml-cpu/*.cpp",
+        "ggml/src/ggml-cpu/arch/arm/*.cpp",
+        "ggml/src/ggml-cpu/amx/*.cpp",
+        "ggml/src/ggml-cpu/llamafile/*.cpp",
+        "ggml/src/ggml-cpu/tiled/*.cpp",
+        "src/*.cpp",
+        "src/models/*.cpp",
+    ],
+
+    exclude_srcs: [
+        // Feature scoring is only used by dynamically loaded CPU variants.
+        "ggml/src/ggml-cpu/arch/arm/cpu-feats.cpp",
+    ],
+
+    whole_static_libs: ["libggml_c_i8mm"],
 
     export_include_dirs: [
         "ggml/include",
